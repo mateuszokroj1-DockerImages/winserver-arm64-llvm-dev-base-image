@@ -1,0 +1,44 @@
+name: Windows Server ARM64 - deployment to Docker Hub
+
+env:
+  tag: mateuszokroj1/winserver-arm64-llvm-dev-base:latest
+
+on:
+  push:
+    branches: [ "main", "releases/*" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-11-arm
+    environment:
+      name: production
+
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v6.1.0
+
+      - name: Ensure Docker Engine is running
+        run: |
+          docker info
+          if ($LASTEXITCODE -ne 0) { throw 'Docker Engine is unavailable' }
+        shell: powershell
+
+      - name: Docker Login
+        uses: docker/login-action@v4.8.0
+        with:
+          username: ${{ secrets.DOCKER_LOGIN }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      - name: Docker build
+        run: docker build --platform windows/arm64 --pull --tag ${{ env.tag }} .
+
+      - name: Analyze with Docker Scout
+        uses: docker/scout-action@v1.26.0
+        with:
+          command: cves
+          image: ${{ env.tag }}
+          exit-code: true
+
+      - name: Docker push
+        run: docker push ${{ env.tag }}
