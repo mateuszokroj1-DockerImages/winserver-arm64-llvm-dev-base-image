@@ -18,10 +18,39 @@ jobs:
       - name: Git checkout
         uses: actions/checkout@v6.1.0
 
+      - name: Check Windows features and install Docker Engine
+        run: |
+          foreach ($featureName in @('Containers', 'Microsoft-Hyper-V-All')) {
+            try {
+              $feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction Stop
+              Write-Host "Windows feature $featureName state: $($feature.State)"
+            } catch {
+              Write-Warning "Could not query Windows feature ${featureName}: $($_.Exception.Message)"
+            }
+          }
+
+          choco install docker-engine --version=29.8.1 --exact --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Chocolatey failed to install docker-engine (exit code $LASTEXITCODE)" }
+        shell: powershell
+
       - name: Ensure Docker Engine is running
         run: |
-          docker info
-          if ($LASTEXITCODE -ne 0) { throw 'Docker Engine is unavailable' }
+          $service = Get-Service -Name docker -ErrorAction Stop
+          if ($service.Status -ne 'Running') {
+            Start-Service -Name docker
+          }
+
+          $deadline = (Get-Date).AddSeconds(60)
+          do {
+            docker info
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host 'Docker Engine is ready.'
+              exit 0
+            }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+
+          throw 'Docker Engine did not become ready within 60 seconds.'
         shell: powershell
 
       - name: Docker Login
